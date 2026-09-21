@@ -25,7 +25,7 @@ public actor CostEstimator {
     ///     `:free` falls back to the base model's pricing.
     ///   - promptTokens: The number of prompt (input) tokens.
     ///   - completionTokens: The number of completion (output) tokens.
-    /// - Throws: ``HarnessError/invalidResponse(String)`` when no pricing is
+    /// - Throws: ``HarnessError/invalidResponse(_:)`` when no pricing is
     ///   available for the model.
     public func estimatedCost(model: String, promptTokens: Int, completionTokens: Int) async throws -> Decimal {
         let pricing = try await pricing(for: model)

@@ -129,7 +129,7 @@ public actor VoiceSession {
     /// Starting an already active call does nothing.
     ///
     /// - Throws: ``HarnessError/missingAPIKey(service:)`` when the ElevenLabs
-    ///   key is empty, and ``HarnessError/recordingFailed(String)`` when no
+    ///   key is empty, and ``HarnessError/recordingFailed(_:)`` when no
     ///   microphone input is available.
     public func start() async throws {
         guard callTask == nil else { return }

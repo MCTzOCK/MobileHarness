@@ -91,7 +91,7 @@ public struct UtteranceDetector: Sendable {
 
 /// Records microphone audio as AAC-in-MP4 clips.
 ///
-/// ``recordUtterance()`` records exactly one utterance using
+/// ``MicrophoneRecorder/recordUtterance(detection:)`` records exactly one utterance using
 /// ``UtteranceDetector``; ``record()`` and ``stop()`` give manual control for
 /// push-to-talk interfaces. Clips are encoded to `.m4a` and wrapped in
 /// ``AudioRecording`` for ``ElevenLabsClient/transcribeSpeech(in:model:languageCode:)``.
@@ -123,7 +123,7 @@ public actor MicrophoneRecorder {
     /// configuration. Cancelling the awaiting task stops the microphone and
     /// throws `CancellationError`.
     ///
-    /// - Throws: ``HarnessError/recordingFailed(String)`` when no input is
+    /// - Throws: ``HarnessError/recordingFailed(_:)`` when no input is
     ///   available, and `CancellationError` when cancelled.
     public func recordUtterance(
         detection configuration: UtteranceDetector.Configuration = UtteranceDetector.Configuration()
@@ -140,7 +140,7 @@ public actor MicrophoneRecorder {
 
     /// Starts recording with no automatic stop.
     ///
-    /// - Throws: ``HarnessError/recordingFailed(String)`` when no input is
+    /// - Throws: ``HarnessError/recordingFailed(_:)`` when no input is
     ///   available or a recording is already running.
     public func record() async throws {
         guard !isRecording else {
@@ -151,7 +151,7 @@ public actor MicrophoneRecorder {
 
     /// Stops recording started with ``record()`` and returns the clip.
     ///
-    /// - Throws: ``HarnessError/recordingFailed(String)`` when nothing is being
+    /// - Throws: ``HarnessError/recordingFailed(_:)`` when nothing is being
     ///   recorded or encoding the clip fails.
     public func stop() async throws -> AudioRecording {
         guard isRecording else {

@@ -40,7 +40,7 @@ public struct ElevenLabsClient: Sendable {
     ///   - settings: Voice delivery settings.
     ///   - outputFormat: The audio container of the returned bytes.
     /// - Returns: The encoded audio, playable with ``SpeechPlayer``.
-    /// - Throws: ``HarnessError/speechSynthesisFailed(String)`` or
+    /// - Throws: ``HarnessError/speechSynthesisFailed(_:)`` or
     ///   ``HarnessError/api(statusCode:message:)`` on service errors.
     public func synthesizeSpeech(
         from text: String,
@@ -100,7 +100,7 @@ public struct ElevenLabsClient: Sendable {
     ///   - model: The recognition model; defaults to ``SpeechRecognitionModel/scribeV1``.
     ///   - languageCode: An optional ISO 639-1 hint; omitted to auto-detect.
     /// - Returns: The transcript with detected language.
-    /// - Throws: ``HarnessError/transcriptionFailed(String)`` or
+    /// - Throws: ``HarnessError/transcriptionFailed(_:)`` or
     ///   ``HarnessError/api(statusCode:message:)`` on service errors.
     public func transcribeSpeech(
         in recording: AudioRecording,

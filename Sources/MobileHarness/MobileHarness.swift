@@ -29,6 +29,12 @@
 /// print(await agent.statistics.totalCost)
 /// ```
 ///
+/// ### Guides
+/// - <doc:GettingStarted>
+/// - <doc:ToolCalling>
+/// - <doc:VoiceCalling>
+/// - <doc:UsageAndCosts>
+///
 /// ### Topics
 ///
 /// #### Agent

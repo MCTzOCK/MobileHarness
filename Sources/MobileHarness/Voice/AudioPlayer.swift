@@ -38,7 +38,7 @@ public actor SpeechPlayer {
     ///
     /// - Parameter audio: Encoded audio, such as the MP3 bytes returned by
     ///   ``ElevenLabsClient/synthesizeSpeech(from:voiceID:model:settings:outputFormat:)``.
-    /// - Throws: ``HarnessError/playbackFailed(String)`` when the audio cannot
+    /// - Throws: ``HarnessError/playbackFailed(_:)`` when the audio cannot
     ///   be decoded or finished unsuccessfully.
     public func play(_ audio: Data) async throws {
         guard !audio.isEmpty else {

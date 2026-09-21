@@ -32,7 +32,7 @@ public enum APIKeyService {
 /// for background agent runs while never leaving the device — not even in
 /// backups. Writes use the add-or-update pattern and every `OSStatus` is
 /// checked; device-locked failures (`errSecInteractionNotAllowed`) surface as
-/// ``HarnessError/keychainStatus(OSStatus)`` rather than deleting the item.
+/// ``HarnessError/keychainStatus(_:)`` rather than deleting the item.
 ///
 /// ```swift
 /// let store = KeychainAPIKeyStore()
