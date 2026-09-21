@@ -67,6 +67,7 @@ public struct URLSessionTransport: HTTPTransport {
         self.session = session
     }
 
+    /// Sends the request through the underlying `URLSession`.
     public func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         var urlRequest = URLRequest(url: request.url)
         urlRequest.httpMethod = request.method

@@ -75,6 +75,7 @@ public struct KeychainAPIKeyStore: APIKeyStore {
         return query
     }
 
+    /// Stores the key in the keychain, adding or updating as needed.
     public func saveAPIKey(_ key: String, for account: String) async throws {
         let data = Data(key.utf8)
         let baseQuery = baseQuery(account: account)
@@ -98,6 +99,7 @@ public struct KeychainAPIKeyStore: APIKeyStore {
         }
     }
 
+    /// Loads the key from the keychain, or `nil` when none is stored.
     public func loadAPIKey(for account: String) async throws -> String? {
         var query = baseQuery(account: account)
         query[kSecMatchLimit] = kSecMatchLimitOne
@@ -118,6 +120,7 @@ public struct KeychainAPIKeyStore: APIKeyStore {
         }
     }
 
+    /// Removes the key from the keychain; absent keys succeed.
     public func deleteAPIKey(for account: String) async throws {
         let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
@@ -136,14 +139,17 @@ public actor InMemoryAPIKeyStore: APIKeyStore {
     /// Creates an empty store.
     public init() {}
 
+    /// Stores the key in memory.
     public func saveAPIKey(_ key: String, for service: String) async throws {
         keys[service] = key
     }
 
+    /// Loads the stored key, or `nil` when none is stored.
     public func loadAPIKey(for service: String) async throws -> String? {
         keys[service]
     }
 
+    /// Removes the stored key.
     public func deleteAPIKey(for service: String) async throws {
         keys.removeValue(forKey: service)
     }

@@ -46,6 +46,7 @@ public enum HarnessError: Error, Sendable, Equatable, CustomStringConvertible {
     /// The associated value is the raw `OSStatus` returned by Security.framework.
     case keychainStatus(OSStatus)
 
+    /// A single-line, human-readable description of the failure.
     public var description: String {
         switch self {
         case let .api(statusCode, message):

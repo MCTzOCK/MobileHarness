@@ -102,12 +102,19 @@ extension JSONValue {
 extension JSONValue: ExpressibleByNilLiteral, ExpressibleByBooleanLiteral,
     ExpressibleByIntegerLiteral, ExpressibleByFloatLiteral, ExpressibleByStringLiteral,
     ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral {
+    /// Creates the JSON `null` value.
     public init(nilLiteral: ()) { self = .null }
+    /// Creates a boolean from a boolean literal.
     public init(booleanLiteral value: Bool) { self = .bool(value) }
+    /// Creates an integer from an integer literal.
     public init(integerLiteral value: Int64) { self = .int(value) }
+    /// Creates a number from a floating-point literal.
     public init(floatLiteral value: Double) { self = .double(value) }
+    /// Creates a string from a string literal.
     public init(stringLiteral value: String) { self = .string(value) }
+    /// Creates an array from an array literal.
     public init(arrayLiteral elements: JSONValue...) { self = .array(elements) }
+    /// Creates an object from a dictionary literal.
     public init(dictionaryLiteral pairs: (String, JSONValue)...) {
         self = .object(Dictionary(pairs, uniquingKeysWith: { _, last in last }))
     }
@@ -116,6 +123,7 @@ extension JSONValue: ExpressibleByNilLiteral, ExpressibleByBooleanLiteral,
 // MARK: - Codable
 
 extension JSONValue: Codable {
+    /// Decodes any JSON value from its single-value representation.
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
@@ -141,6 +149,7 @@ extension JSONValue: Codable {
         }
     }
 
+    /// Encodes the value back into its single-value representation.
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
