@@ -13,7 +13,7 @@ Add the package in Xcode (File ▸ Add Package Dependencies…) or to your `Pack
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/bensiebert/MobileHarness.git", from: "0.1.0"),
+    .package(url: "https://github.com/MCTzOCK/MobileHarness.git", from: "0.1.0"),
 ]
 ```
 

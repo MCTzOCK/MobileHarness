@@ -1,6 +1,6 @@
 # MobileHarness
 
-[![CI](https://github.com/bensiebert/MobileHarness/actions/workflows/ci.yml/badge.svg)](https://github.com/bensiebert/MobileHarness/actions/workflows/ci.yml)
+[![CI](https://github.com/MCTzOCK/MobileHarness/actions/workflows/ci.yml/badge.svg)](https://github.com/MCTzOCK/MobileHarness/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Swift](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-iOS%2026%20%7C%20macOS%2026-blue)](Package.swift)
@@ -39,13 +39,13 @@ print(statistics.totalCost, statistics.perModel)
 
 ## Installation
 
-**Xcode:** File ▸ Add Package Dependencies… → `https://github.com/bensiebert/MobileHarness.git`
+**Xcode:** File ▸ Add Package Dependencies… → `https://github.com/MCTzOCK/MobileHarness.git`
 
 **Package.swift:**
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/bensiebert/MobileHarness.git", from: "0.1.0"),
+    .package(url: "https://github.com/MCTzOCK/MobileHarness.git", from: "0.1.0"),
 ]
 ```
 

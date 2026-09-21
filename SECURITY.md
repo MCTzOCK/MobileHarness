@@ -8,7 +8,7 @@ Security fixes target the latest published release. Pre-release versions receive
 
 **Do not open a public issue for anything security-relevant.**
 
-Report privately via [GitHub security advisories](https://github.com/bensiebert/MobileHarness/security/advisories/new)
+Report privately via [GitHub security advisories](https://github.com/MCTzOCK/MobileHarness/security/advisories/new)
 ("Report a vulnerability"), which reaches the maintainer directly and supports
 coordinated disclosure.
 

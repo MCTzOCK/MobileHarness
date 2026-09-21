@@ -38,4 +38,4 @@ Initial public release.
   cost math, multipart forms, voice building blocks, utterance detection,
   and key storage.
 
-[0.1.0]: https://github.com/bensiebert/MobileHarness/releases/tag/0.1.0
+[0.1.0]: https://github.com/MCTzOCK/MobileHarness/releases/tag/0.1.0
