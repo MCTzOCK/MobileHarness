@@ -42,6 +42,24 @@ struct AgentLoopTests {
         #expect(response.finishReason == "stop")
     }
 
+    @Test("Configured OpenRouter server tools ride along on every request")
+    func serverToolsAppended() async throws {
+        let transport = MockTransport(responding: [Fixtures.completion(text: "ok")])
+        let agent = Agent(configuration: AgentConfiguration(
+            openRouterAPIKey: Self.key,
+            openRouterServerTools: [.webSearch, .webFetch, .datetime(timezone: "Europe/Berlin")],
+            transport: transport
+        ))
+        _ = try await agent.run("hi")
+        let body = try JSONDecoder().decode(JSONValue.self, from: #require(transport.requests.first?.body))
+        let tools = try #require(body["tools"]?.arrayValue)
+        #expect(tools.map { $0["type"]?.stringValue } == [
+            "openrouter:web_search", "openrouter:web_fetch", "openrouter:datetime"
+        ])
+        #expect(tools.allSatisfy { $0["function"] == nil })
+        #expect(tools[2]["parameters"]?["timezone"]?.stringValue == "Europe/Berlin")
+    }
+
     @Test("A single-stage tool call executes the tool and feeds the result back")
     func singleStageToolCall() async throws {
         let (agent, transport) = makeAgent(responses: [

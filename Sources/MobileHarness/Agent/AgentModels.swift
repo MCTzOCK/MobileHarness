@@ -1,5 +1,42 @@
 import Foundation
 
+/// An OpenRouter server-side tool appended to every request.
+///
+/// Unlike function tools, the model invokes these and OpenRouter executes
+/// them within the request — results return to the model directly, with no
+/// client-side tool-call round-trip. Well-known types:
+///
+/// - `"openrouter:web_search"` — live web search (billed per search)
+/// - `"openrouter:web_fetch"` — fetches page content for a URL
+/// - `"openrouter:datetime"` — the current date and time
+public struct OpenRouterServerTool: Sendable, Hashable {
+    /// The OpenRouter tool type, for example `"openrouter:web_search"`.
+    public let type: String
+    /// Optional tool settings, for example `{"timezone": "Europe/Berlin"}`.
+    public let parameters: JSONValue?
+
+    /// Creates a server tool reference.
+    public init(type: String, parameters: JSONValue? = nil) {
+        self.type = type
+        self.parameters = parameters
+    }
+
+    /// Live web search; the model decides when and how often to search.
+    public static let webSearch = OpenRouterServerTool(type: "openrouter:web_search")
+
+    /// Fetches page content for URLs the model chooses.
+    public static let webFetch = OpenRouterServerTool(type: "openrouter:web_fetch")
+
+    /// The current date and time; optionally with an IANA timezone.
+    public static func datetime(timezone: String? = nil) -> OpenRouterServerTool {
+        if let timezone {
+            OpenRouterServerTool(type: "openrouter:datetime", parameters: .object(["timezone": .string(timezone)]))
+        } else {
+            OpenRouterServerTool(type: "openrouter:datetime")
+        }
+    }
+}
+
 /// The configuration of an ``Agent``.
 ///
 /// Every value except the OpenRouter API key has a sensible default, so the
@@ -28,6 +65,10 @@ public struct AgentConfiguration: Sendable {
     /// the default of 8 leaves ample room for multi-step workflows while
     /// protecting against runaway loops.
     public var maxToolStages: Int
+    /// OpenRouter server-side tools sent with every request, such as
+    /// ``OpenRouterServerTool/webSearch``. OpenRouter executes them as the
+    /// model invokes them — no client-side handling is involved.
+    public var openRouterServerTools: [OpenRouterServerTool]
     /// Whether to estimate cost locally when OpenRouter does not report one.
     public var estimateCostsWhenMissing: Bool
     /// Overrides the OpenRouter API base URL.
@@ -55,6 +96,7 @@ public struct AgentConfiguration: Sendable {
         temperature: Double? = nil,
         maxTokens: Int? = nil,
         maxToolStages: Int = 8,
+        openRouterServerTools: [OpenRouterServerTool] = [],
         estimateCostsWhenMissing: Bool = true,
         openRouterBaseURL: URL = OpenRouterClient.defaultBaseURL,
         transport: (any HTTPTransport)? = nil,
@@ -68,6 +110,7 @@ public struct AgentConfiguration: Sendable {
         self.temperature = temperature
         self.maxTokens = maxTokens
         self.maxToolStages = maxToolStages
+        self.openRouterServerTools = openRouterServerTools
         self.estimateCostsWhenMissing = estimateCostsWhenMissing
         self.openRouterBaseURL = openRouterBaseURL
         self.transport = transport

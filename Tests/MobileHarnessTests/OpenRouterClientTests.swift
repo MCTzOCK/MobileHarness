@@ -58,6 +58,62 @@ struct OpenRouterClientTests {
         #expect(body["max_tokens"] == nil)
     }
 
+    @Test("answerVision sends multimodal content and returns the answer text")
+    func visionRequest() async throws {
+        let transport = MockTransport(responding: [Fixtures.completion(text: "Ein roter Schlüsselbund.")])
+        let client = OpenRouterClient(apiKey: Self.key, transport: transport)
+        let answer = try await client.answerVision(
+            question: "Was siehst du?",
+            imageJPEG: Data([0xFF, 0xD8, 0xFF, 0xE0]),
+            model: "google/gemini-2.5-flash",
+            systemPrompt: "Antworte kurz."
+        )
+        #expect(answer == "Ein roter Schlüsselbund.")
+
+        let request = try #require(transport.requests.first)
+        #expect(request.method == "POST")
+        #expect(request.headers["Authorization"] == "Bearer \(Self.key)")
+        let body = try JSONDecoder().decode(JSONValue.self, from: #require(request.body))
+        #expect(body["model"]?.stringValue == "google/gemini-2.5-flash")
+        #expect(body["max_tokens"]?.intValue == 800)
+        let messages = try #require(body["messages"]?.arrayValue)
+        #expect(messages.count == 2)
+        #expect(messages[0]["role"]?.stringValue == "system")
+        let userContent = try #require(messages[1]["content"]?.arrayValue)
+        #expect(userContent[0]["type"]?.stringValue == "image_url")
+        #expect(userContent[0]["image_url"]?["url"]?.stringValue?.hasPrefix("data:image/jpeg;base64,") == true)
+        #expect(userContent[1]["type"]?.stringValue == "text")
+        #expect(userContent[1]["text"]?.stringValue == "Was siehst du?")
+    }
+
+    @Test("OpenRouter server tools encode as type-only entries with optional parameters")
+    func serverToolsShape() async throws {
+        let transport = MockTransport(responding: [Fixtures.completion(text: "ok")])
+        let client = OpenRouterClient(apiKey: Self.key, transport: transport)
+        _ = try await client.complete(
+            model: "m",
+            messages: [.user("hi")],
+            tools: [
+                .function(name: "t", description: "A tool.", parameters: .object([:])),
+                .builtin("openrouter:web_search"),
+                .builtin("openrouter:datetime", parameters: .object(["timezone": .string("Europe/Berlin")]))
+            ],
+            temperature: nil,
+            maxTokens: nil
+        )
+        let body = try JSONDecoder().decode(JSONValue.self, from: #require(transport.requests.first?.body))
+        let tools = try #require(body["tools"]?.arrayValue)
+        #expect(tools.count == 3)
+        #expect(tools[0]["type"]?.stringValue == "function")
+        #expect(tools[0]["function"]?["name"]?.stringValue == "t")
+        #expect(tools[1]["type"]?.stringValue == "openrouter:web_search")
+        #expect(tools[1]["function"] == nil)
+        #expect(tools[1]["parameters"] == nil)
+        #expect(tools[2]["type"]?.stringValue == "openrouter:datetime")
+        #expect(tools[2]["function"] == nil)
+        #expect(tools[2]["parameters"]?["timezone"]?.stringValue == "Europe/Berlin")
+    }
+
     @Test("Responses with tool calls decode, including usage cost")
     func toolCallDecoding() throws {
         let json = Fixtures.completionBody(

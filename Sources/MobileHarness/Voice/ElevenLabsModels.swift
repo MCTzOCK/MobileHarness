@@ -80,10 +80,37 @@ public enum AudioOutputFormat: String, Sendable, Hashable, CaseIterable {
     case mp3_24000_48 = "mp3_24000_48"
     /// Opus at 48 kHz, 96 kbps.
     case opus_48000_96 = "opus_48000_96"
+    /// Raw 16-bit little-endian mono PCM at 16 kHz — streamable chunk by
+    /// chunk into ``StreamingSpeechPlayer``.
+    case pcm_16000 = "pcm_16000"
+    /// Raw 16-bit little-endian mono PCM at 24 kHz — streamable chunk by
+    /// chunk into ``StreamingSpeechPlayer``.
+    case pcm_24000 = "pcm_24000"
+    /// Raw 16-bit little-endian mono PCM at 44.1 kHz — streamable chunk by
+    /// chunk into ``StreamingSpeechPlayer``.
+    case pcm_44100 = "pcm_44100"
     /// Uncompressed WAV at 16 kHz.
     case wav_16000 = "wav_16000"
     /// Uncompressed WAV at 44.1 kHz.
     case wav_44100 = "wav_44100"
+
+    /// `true` for the raw PCM formats whose chunks play incrementally.
+    public var isPCM: Bool {
+        switch self {
+        case .pcm_16000, .pcm_24000, .pcm_44100: true
+        default: false
+        }
+    }
+
+    /// The PCM sample rate in hertz, or `nil` for compressed containers.
+    public var pcmSampleRate: Double? {
+        switch self {
+        case .pcm_16000: 16_000
+        case .pcm_24000: 24_000
+        case .pcm_44100: 44_100
+        default: nil
+        }
+    }
 }
 
 /// An audio clip ready for transcription or playback.

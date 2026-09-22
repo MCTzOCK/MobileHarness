@@ -5,6 +5,54 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `VoiceSession/onAnswerAudioStarted` — fires when answer audio actually
+  starts playing (buffered playback start, or the first streamed chunk),
+  later than the `speaking` state, which begins while synthesis is still on
+  the wire. Both session callbacks are now stored `nonisolated(unsafe)` so
+  the documented `session.onStateChange = { … }` assignment works from any
+  isolation domain.
+- **Streaming speech synthesis** — `ElevenLabsClient/streamSpeech(from:voiceID:model:settings:outputFormat:)`
+  calls the `/text-to-speech/{id}/stream` endpoint and delivers audio chunks
+  as ElevenLabs produces them. New raw PCM `AudioOutputFormat`s
+  (`.pcm_16000`, `.pcm_24000`, `.pcm_44100`) pair with the new
+  ``StreamingSpeechPlayer``, which plays chunks incrementally through
+  `AVAudioEngine` — audio starts with the first chunk instead of after the
+  whole clip. `VoiceConfiguration/streamSpeech` opts the call loop's answers
+  into streamed playback (PCM output required).
+- **Streaming HTTP transport** — `HTTPTransport/sendStreaming(_:)` returns an
+  ``HTTPStreamingResponse`` with the body as an `AsyncThrowingStream<Data, Error>`;
+  ``URLSessionTransport`` implements true chunked transfer via
+  `URLSession.bytes`, and a protocol default buffers ``send`` so existing
+  mocks keep working.
+
+- **OpenRouter server-side tools** — `AgentConfiguration/openRouterServerTools`
+  appends tools such as `openrouter:web_search`, `openrouter:web_fetch`, and
+  `openrouter:datetime` to every completion request. OpenRouter executes them
+  as the model invokes them (results return server-side, no client tool-call
+  round-trip); well-known tools are predefined as
+  ``OpenRouterServerTool/webSearch``, ``OpenRouterServerTool/webFetch``, and
+  ``OpenRouterServerTool/datetime(timezone:)``, each with optional
+  `parameters`.
+
+- `MicrophoneRecorder` now fails fast with
+  ``HarnessError/recordingFailed(_:)`` after 3 seconds of pure-zero input —
+  a live microphone always delivers a nonzero noise floor, so prolonged
+  silence means the input route is dead (for example a simulator without
+  audio input) instead of waiting forever for an utterance that can never
+  start.
+
+### Changed
+
+- `MicrophoneRecorder.stop()` now also ends an in-flight
+  `recordUtterance(detection:)` early, returning the clip recorded so far and
+  resuming the awaiting caller with it — a manual early stop instead of
+  waiting for trailing-silence detection (previously it only ended manual
+  `record()` sessions).
+
 ## [0.1.0] - 2026-09-21
 
 Initial public release.

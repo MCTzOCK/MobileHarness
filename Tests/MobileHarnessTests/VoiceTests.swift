@@ -36,6 +36,60 @@ struct ElevenLabsClientTests {
         #expect(settings["speed"]?.doubleValue == 1.2)
     }
 
+    @Test("streamSpeech uses the /stream endpoint and delivers chunks")
+    func streamTTS() async throws {
+        let transport = MockTransport(responding: [
+            HTTPResponse(statusCode: 200, body: Data([0x00, 0x01, 0x02, 0x03]))
+        ])
+        let client = ElevenLabsClient(apiKey: Self.key, transport: transport)
+        let chunks = try await client.streamSpeech(
+            from: "Hello there",
+            voiceID: "voice-123",
+            model: .flashV2_5,
+            outputFormat: .pcm_24000
+        )
+        var received = Data()
+        for try await chunk in chunks {
+            received.append(chunk)
+        }
+        #expect(received == Data([0x00, 0x01, 0x02, 0x03]))
+
+        let request = try #require(transport.requests.first)
+        #expect(request.method == "POST")
+        #expect(request.url.absoluteString == "https://api.elevenlabs.io/v1/text-to-speech/voice-123/stream?output_format=pcm_24000")
+        #expect(request.headers["xi-api-key"] == Self.key)
+    }
+
+    @Test("streamSpeech maps service errors before any audio arrives")
+    func streamTTSError() async throws {
+        let transport = MockTransport(responding: [
+            HTTPResponse(
+                statusCode: 401,
+                body: Data(#"{"detail": {"status": "invalid_api_key", "message": "Invalid API key"}}"#.utf8)
+            )
+        ])
+        let client = ElevenLabsClient(apiKey: Self.key, transport: transport)
+        await #expect(throws: HarnessError.self) {
+            _ = try await client.streamSpeech(from: "hi", outputFormat: .pcm_24000)
+        }
+    }
+
+    @Test("PCM bytes convert to normalized float samples")
+    func pcmConversion() {
+        // Int16 samples: 0, 32767, -32768 — little-endian bytes.
+        let data = Data([
+            0x00, 0x00,       // 0
+            0xFF, 0x7F,       // 32767
+            0x00, 0x80,       // -32768
+        ])
+        let samples = StreamingSpeechPlayer.floatSamples(fromLittleEndianInt16: data)
+        #expect(samples.count == 3)
+        #expect(samples[0] == 0)
+        #expect(abs(samples[1] - 1.0) < 0.0001)
+        #expect(abs(samples[2] + 1.0) < 0.0001)
+        #expect(StreamingSpeechPlayer.floatSamples(fromLittleEndianInt16: Data([0x01])).isEmpty)
+    }
+
     @Test("transcribeSpeech sends a well-formed multipart body")
     func sttRequest() async throws {
         let responseBody = """
@@ -222,6 +276,55 @@ struct VoiceSessionTests {
 
         let states = await session.state
         #expect(states == .idle)
+    }
+
+    @Test("onAnswerAudioStarted fires once, right before answer playback")
+    func answerAudioCallback() async throws {
+        final class Counter: @unchecked Sendable {
+            private let lock = NSLock()
+            private var value = 0
+            var count: Int {
+                lock.lock(); defer { lock.unlock() }
+                return value
+            }
+            func increment() {
+                lock.lock(); value += 1; lock.unlock()
+            }
+        }
+        let counter = Counter()
+        let transport = MockTransport(routing: { request in
+            switch (request.method, request.url.path) {
+            case ("POST", "/v1/chat/completions"):
+                return Fixtures.completion(text: "It is sunny.")
+            case ("POST", "/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"):
+                return HTTPResponse(statusCode: 200, body: Data("audio".utf8))
+            default:
+                throw HarnessError.invalidResponse("Unexpected \(request.method) \(request.url)")
+            }
+        })
+        let agent = Agent(configuration: AgentConfiguration(
+            openRouterAPIKey: "or-key",
+            openRouterBaseURL: URL(string: "https://api.elevenlabs.io/v1")!,
+            transport: transport
+        ))
+        let session = VoiceSession(
+            agent: agent,
+            configuration: VoiceConfiguration(
+                elevenLabsAPIKey: "xi-key",
+                transport: transport
+            )
+        )
+        session.onAnswerAudioStarted = { counter.increment() }
+        do {
+            _ = try await session.ask("How is the weather?")
+        } catch let error as HarnessError {
+            // Undecodable mock audio fails playback — after the callback fired.
+            guard case .playbackFailed = error else {
+                Issue.record("Unexpected error: \(error)")
+                return
+            }
+        }
+        #expect(counter.count == 1)
     }
 
     @Test("start with a missing key fails fast")

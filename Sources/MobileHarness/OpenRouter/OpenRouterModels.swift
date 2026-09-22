@@ -86,11 +86,24 @@ struct ChatCompletionRequestDTO: Encodable, Sendable, Equatable {
             let parameters: JSONValue
         }
 
+        /// `"function"` for client-side tools, or an OpenRouter server-side
+        /// tool type such as `"openrouter:web_search"`.
         let type: String
-        let function: Function
+        /// Present only for function tools.
+        let function: Function?
+        /// Optional settings for server-side tools, for example
+        /// `{"timezone": "Europe/Berlin"}` for `"openrouter:datetime"`.
+        let parameters: JSONValue?
 
         static func function(name: String, description: String, parameters: JSONValue) -> ToolDefinition {
-            ToolDefinition(type: "function", function: Function(name: name, description: description, parameters: parameters))
+            ToolDefinition(type: "function", function: Function(name: name, description: description, parameters: parameters), parameters: nil)
+        }
+
+        /// An OpenRouter server-side tool, executed by OpenRouter when the
+        /// model invokes it — the model sees the results directly and no
+        /// client-side tool call round-trips.
+        static func builtin(_ type: String, parameters: JSONValue? = nil) -> ToolDefinition {
+            ToolDefinition(type: type, function: nil, parameters: parameters)
         }
     }
 

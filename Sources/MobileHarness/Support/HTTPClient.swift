@@ -57,6 +57,43 @@ public protocol HTTPTransport: Sendable {
     func send(_ request: HTTPRequest) async throws -> HTTPResponse
 }
 
+/// A chunked HTTP response: status and headers plus the body as a sequence of
+/// chunks arriving as they are received.
+public struct HTTPStreamingResponse: Sendable {
+    /// The HTTP status code.
+    public let statusCode: Int
+    /// The response headers, keyed as received.
+    public let headers: [String: String]
+    /// The response body in arrival order; finishes with the stream, or throws
+    /// when the transfer fails mid-stream.
+    public let chunks: AsyncThrowingStream<Data, Error>
+
+    /// Creates a streaming response.
+    public init(statusCode: Int, headers: [String: String] = [:], chunks: AsyncThrowingStream<Data, Error>) {
+        self.statusCode = statusCode
+        self.headers = headers
+        self.chunks = chunks
+    }
+}
+
+extension HTTPTransport {
+    /// Sends the request and streams the response body.
+    ///
+    /// The default implementation buffers ``send`` and emits the whole body as
+    /// a single chunk — correct, but without streaming latency benefits;
+    /// ``URLSessionTransport`` overrides it with true chunked transfer.
+    public func sendStreaming(_ request: HTTPRequest) async throws -> HTTPStreamingResponse {
+        let response = try await send(request)
+        let chunks = AsyncThrowingStream(Data.self) { continuation in
+            if !response.body.isEmpty {
+                continuation.yield(response.body)
+            }
+            continuation.finish()
+        }
+        return HTTPStreamingResponse(statusCode: response.statusCode, headers: response.headers, chunks: chunks)
+    }
+}
+
 /// An `HTTPTransport` backed by `URLSession`.
 public struct URLSessionTransport: HTTPTransport {
     /// The session used to execute requests.
@@ -84,6 +121,49 @@ public struct URLSessionTransport: HTTPTransport {
             statusCode: httpResponse?.statusCode ?? 0,
             headers: headers,
             body: data
+        )
+    }
+
+    /// Sends the request and streams the response body as it arrives.
+    public func sendStreaming(_ request: HTTPRequest) async throws -> HTTPStreamingResponse {
+        var urlRequest = URLRequest(url: request.url)
+        urlRequest.httpMethod = request.method
+        urlRequest.httpBody = request.body
+        for (name, value) in request.headers {
+            urlRequest.setValue(value, forHTTPHeaderField: name)
+        }
+        let (bytes, response) = try await session.bytes(for: urlRequest)
+        let httpResponse = response as? HTTPURLResponse
+        let headers = httpResponse?.allHeaderFields.reduce(into: [String: String]()) { partial, pair in
+            if let name = pair.key as? String { partial[name] = pair.value as? String }
+        } ?? [:]
+        let chunks = AsyncThrowingStream(Data.self) { continuation in
+            let delivery = Task {
+                var buffer = Data()
+                do {
+                    for try await byte in bytes {
+                        buffer.append(byte)
+                        if buffer.count >= 4096 {
+                            continuation.yield(buffer)
+                            buffer.removeAll(keepingCapacity: true)
+                        }
+                    }
+                    if !buffer.isEmpty {
+                        continuation.yield(buffer)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in
+                delivery.cancel()
+            }
+        }
+        return HTTPStreamingResponse(
+            statusCode: httpResponse?.statusCode ?? 0,
+            headers: headers,
+            chunks: chunks
         )
     }
 }

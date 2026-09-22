@@ -17,12 +17,16 @@ public struct VoiceConfiguration: Sendable {
     public var recognitionModel: SpeechRecognitionModel
     /// An ISO 639-1 language hint for recognition, or `nil` to auto-detect.
     public var recognitionLanguageCode: String?
+    /// Stream synthesized speech from the `/stream` endpoint and play audio as
+    /// it arrives, instead of waiting for the full clip. Requires a PCM
+    /// `outputFormat`; ignored otherwise.
+    public var streamSpeech: Bool
     /// Utterance boundary detection tuning; `nil` disables the continuous call
     /// loop's automatic turn taking in favor of ``VoiceSession/listenOnce()``.
     public var utteranceDetection: UtteranceDetector.Configuration?
     /// Overrides the ElevenLabs API base URL; used by tests.
     public var baseURL: URL
-    /// Overrides the HTTP transport; used by tests.
+    /// Overrides the HTTP transport used by ElevenLabs requests; used by tests.
     public var transport: (any HTTPTransport)?
 
     /// Creates a voice configuration.
@@ -34,6 +38,7 @@ public struct VoiceConfiguration: Sendable {
         outputFormat: AudioOutputFormat = .mp3_44100_128,
         recognitionModel: SpeechRecognitionModel = .scribeV1,
         recognitionLanguageCode: String? = nil,
+        streamSpeech: Bool = false,
         utteranceDetection: UtteranceDetector.Configuration? = UtteranceDetector.Configuration(),
         baseURL: URL = ElevenLabsClient.defaultBaseURL,
         transport: (any HTTPTransport)? = nil
@@ -45,6 +50,7 @@ public struct VoiceConfiguration: Sendable {
         self.outputFormat = outputFormat
         self.recognitionModel = recognitionModel
         self.recognitionLanguageCode = recognitionLanguageCode
+        self.streamSpeech = streamSpeech
         self.utteranceDetection = utteranceDetection
         self.baseURL = baseURL
         self.transport = transport
@@ -96,6 +102,8 @@ public actor VoiceSession {
     private let player = SpeechPlayer()
     private let recorder = MicrophoneRecorder()
     private var callTask: Task<Void, Never>?
+    /// The player behind an in-flight streamed answer, so ``stop()`` can cut it.
+    private var activeStreamPlayer: StreamingSpeechPlayer?
 
     /// The current phase of the call.
     public private(set) var state: VoiceCallState = .idle
@@ -104,7 +112,18 @@ public actor VoiceSession {
     public private(set) var lastErrorDescription: String?
 
     /// Observes call phase changes, delivered on a cooperative thread.
-    public var onStateChange: (@Sendable (VoiceCallState) -> Void)?
+    ///
+    /// Stored `nonisolated(unsafe)` so callers can assign it directly,
+    /// matching the documented `session.onStateChange = { … }` pattern; set it
+    /// before the first run.
+    nonisolated(unsafe) public var onStateChange: (@Sendable (VoiceCallState) -> Void)?
+
+    /// Fires when answer audio actually starts playing — later than
+    /// ``VoiceCallState/speaking``, which begins while synthesis is still on
+    /// the wire. Useful for call UIs bridging the gap until the answer is
+    /// audible. Delivered on a cooperative thread, once per answer. Assign it
+    /// before the first run.
+    nonisolated(unsafe) public var onAnswerAudioStarted: (@Sendable () -> Void)?
 
     /// Creates a session around the given agent.
     public init(agent: Agent, configuration: VoiceConfiguration) {
@@ -151,6 +170,8 @@ public actor VoiceSession {
         callTask?.cancel()
         callTask = nil
         await player.stop()
+        await activeStreamPlayer?.stop()
+        activeStreamPlayer = nil
         await recorder.cancelRecording()
         transition(to: .idle)
     }
@@ -227,14 +248,50 @@ public actor VoiceSession {
     /// Synthesizes `text` with ElevenLabs and plays it to completion.
     private func speak(_ text: String) async throws {
         guard !text.isEmpty else { return }
-        let audio = try await client.synthesizeSpeech(
-            from: text,
-            voiceID: configuration.voiceID,
-            model: configuration.speechModel,
-            settings: configuration.speechSettings,
-            outputFormat: configuration.outputFormat
-        )
-        try await player.play(audio)
+        if configuration.streamSpeech, configuration.outputFormat.isPCM {
+            try await streamAndSpeak(text)
+        } else {
+            let audio = try await client.synthesizeSpeech(
+                from: text,
+                voiceID: configuration.voiceID,
+                model: configuration.speechModel,
+                settings: configuration.speechSettings,
+                outputFormat: configuration.outputFormat
+            )
+            onAnswerAudioStarted?()
+            try await player.play(audio)
+        }
+    }
+
+    /// Streams synthesis audio from the `/stream` endpoint, playing chunks as
+    /// they arrive instead of waiting for the full clip.
+    private func streamAndSpeak(_ text: String) async throws {
+        let streamPlayer = StreamingSpeechPlayer()
+        activeStreamPlayer = streamPlayer
+        do {
+            let chunks = try await client.streamSpeech(
+                from: text,
+                voiceID: configuration.voiceID,
+                model: configuration.speechModel,
+                settings: configuration.speechSettings,
+                outputFormat: configuration.outputFormat
+            )
+            try await streamPlayer.start(sampleRate: configuration.outputFormat.pcmSampleRate ?? 24_000)
+            var audioStarted = false
+            for try await chunk in chunks {
+                try await streamPlayer.append(chunk)
+                if !audioStarted {
+                    audioStarted = true
+                    onAnswerAudioStarted?()
+                }
+            }
+            try await streamPlayer.finish()
+            activeStreamPlayer = nil
+        } catch {
+            await streamPlayer.stop()
+            activeStreamPlayer = nil
+            throw error
+        }
     }
 
     private func transition(to newState: VoiceCallState) {

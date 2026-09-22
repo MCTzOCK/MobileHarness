@@ -103,6 +103,8 @@ public struct UtteranceDetector: Sendable {
 public actor MicrophoneRecorder {
     /// The hard cap on manually controlled recordings, bounding memory use.
     private static let manualRecordingCap: TimeInterval = 120
+    /// Consecutive pure-zero input after which recording fails as dead input.
+    private static let deadInputTimeout: TimeInterval = 3
 
     private let engine = AVAudioEngine()
     private var detector: UtteranceDetector?
@@ -110,6 +112,10 @@ public actor MicrophoneRecorder {
     private var recordingStart: TimeInterval = 0
     private var monoSamples: [Float] = []
     private var continuation: CheckedContinuation<AudioRecording, Error>?
+    private var zeroSince: TimeInterval?
+    #if DEBUG
+    private var debugBufferCount = 0
+    #endif
 
     /// Whether a recording is currently running.
     public private(set) var isRecording = false
@@ -141,7 +147,7 @@ public actor MicrophoneRecorder {
     /// Starts recording with no automatic stop.
     ///
     /// - Throws: ``HarnessError/recordingFailed(_:)`` when no input is
-    ///   available or a recording is already running.
+    /// available or a recording is already running.
     public func record() async throws {
         guard !isRecording else {
             throw HarnessError.recordingFailed("A recording is already running.")
@@ -149,15 +155,24 @@ public actor MicrophoneRecorder {
         try startRecording(detector: nil)
     }
 
-    /// Stops recording started with ``record()`` and returns the clip.
+    /// Stops recording started with ``record()`` or an in-flight
+    /// ``recordUtterance(detection:)``, returning the clip recorded so far.
+    ///
+    /// When called during an utterance-detected recording, the awaiting
+    /// ``recordUtterance(detection:)`` caller resumes with the same clip — an
+    /// early manual stop instead of waiting for trailing-silence detection.
     ///
     /// - Throws: ``HarnessError/recordingFailed(_:)`` when nothing is being
-    ///   recorded or encoding the clip fails.
+    /// recorded or encoding the clip fails.
     public func stop() async throws -> AudioRecording {
         guard isRecording else {
             throw HarnessError.recordingFailed("No recording is running.")
         }
-        return try finishRecording()
+        let clip = try finishRecording()
+        let pending = continuation
+        continuation = nil
+        pending?.resume(returning: clip)
+        return clip
     }
 
     /// Stops any active recording and fails its awaiting caller with
@@ -185,6 +200,7 @@ public actor MicrophoneRecorder {
         sampleRate = format.sampleRate
         recordingStart = CACurrentMediaTime()
         monoSamples = []
+        zeroSince = nil
         isRecording = true
 
         input.installTap(onBus: 0, bufferSize: 2_048, format: format) { [weak self] buffer, _ in
@@ -205,6 +221,35 @@ public actor MicrophoneRecorder {
     /// recording when its boundary condition is met.
     private func process(samples: [Float], rootMeanSquare: Double) {
         guard isRecording else { return }
+        #if DEBUG
+        debugBufferCount += 1
+        if debugBufferCount % 25 == 0 {
+            NSLog("[MobileHarness] RMS \(String(format: "%.5f", rootMeanSquare)) elapsed \(String(format: "%.2f", CACurrentMediaTime() - recordingStart))s samples \(monoSamples.count)")
+        }
+        #endif
+
+        // A live microphone always delivers a nonzero noise floor. Prolonged
+        // pure-zero input means no input signal at all — for example a
+        // simulator without audio input or a lost input route. Failing fast
+        // beats waiting for an utterance that can never start.
+        let elapsedNow = CACurrentMediaTime() - recordingStart
+        if rootMeanSquare == 0 {
+            if zeroSince == nil { zeroSince = elapsedNow }
+            if elapsedNow - zeroSince! >= Self.deadInputTimeout {
+                tearDownTap()
+                isRecording = false
+                zeroSince = nil
+                let pending = continuation
+                continuation = nil
+                pending?.resume(throwing: HarnessError.recordingFailed(
+                    "No input signal for \(Int(Self.deadInputTimeout)) seconds — the microphone delivers silence (missing audio input device or lost input route)."
+                ))
+                return
+            }
+        } else {
+            zeroSince = nil
+        }
+
         monoSamples.append(contentsOf: samples)
         let elapsed = CACurrentMediaTime() - recordingStart
 

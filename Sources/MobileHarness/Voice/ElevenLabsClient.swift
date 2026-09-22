@@ -93,6 +93,91 @@ public struct ElevenLabsClient: Sendable {
         return response.body
     }
 
+    /// Synthesizes speech with the `/stream` endpoint, delivering audio chunks
+    /// as ElevenLabs produces them.
+    ///
+    /// Audio starts arriving before the full clip is generated, so callers can
+    /// begin playback with the first chunk — pair with a PCM `outputFormat`
+    /// (for example `.pcm_24000`) and ``StreamingSpeechPlayer``.
+    ///
+    /// - Parameters:
+    ///   - text: The text to speak.
+    ///   - voiceID: The voice identifier; defaults to ElevenLabs' "Rachel".
+    ///   - model: The speech model; defaults to ``SpeechModel/multilingualV2``.
+    ///   - settings: Voice delivery settings.
+    ///   - outputFormat: The audio container of the streamed chunks.
+    /// - Returns: The raw audio chunks in arrival order; the stream throws when
+    ///   the transfer fails mid-stream.
+    /// - Throws: ``HarnessError/speechSynthesisFailed(_:)`` — with the service's
+    ///   message when the stream request is rejected before audio starts.
+    public func streamSpeech(
+        from text: String,
+        voiceID: String = ElevenLabsClient.defaultVoiceID,
+        model: SpeechModel = .multilingualV2,
+        settings: VoiceSettings = VoiceSettings(),
+        outputFormat: AudioOutputFormat = .pcm_24000
+    ) async throws -> AsyncThrowingStream<Data, Error> {
+        guard !apiKey.isEmpty else {
+            throw HarnessError.missingAPIKey(service: "ElevenLabs")
+        }
+        guard !text.isEmpty else {
+            throw HarnessError.speechSynthesisFailed("The text to synthesize is empty.")
+        }
+        let body = SpeechRequestDTO(
+            text: text,
+            modelID: model.rawValue,
+            voiceSettings: .init(
+                stability: settings.stability,
+                similarityBoost: settings.similarityBoost,
+                style: settings.style,
+                useSpeakerBoost: settings.useSpeakerBoost,
+                speed: settings.speed
+            )
+        )
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(body)
+        } catch {
+            throw HarnessError.invalidResponse("Encoding the speech request failed: \(error)")
+        }
+        let request = HTTPRequest(
+            method: "POST",
+            url: speechURL(voiceID: voiceID, outputFormat: outputFormat, streaming: true),
+            headers: [
+                "xi-api-key": apiKey,
+                "Content-Type": "application/json",
+            ],
+            body: data
+        )
+        let response = try await transport.sendStreaming(request)
+        guard response.statusCode == 200 || response.statusCode == 206 else {
+            // Errors arrive as a complete JSON body — drain the chunks to read it.
+            var errorBody = Data()
+            for try await chunk in response.chunks {
+                errorBody.append(chunk)
+            }
+            throw HarnessError.speechSynthesisFailed(
+                errorMessage(for: HTTPResponse(statusCode: response.statusCode, headers: response.headers, body: errorBody))
+            )
+        }
+        return response.chunks
+    }
+
+    /// Builds the text-to-speech URL for a voice, optionally the streaming one.
+    private func speechURL(voiceID: String, outputFormat: AudioOutputFormat, streaming: Bool = false) -> URL {
+        var components = URLComponents(
+            url: baseURL
+                .appendingPathComponent("text-to-speech")
+                .appendingPathComponent(voiceID),
+            resolvingAgainstBaseURL: false
+        )!
+        if streaming {
+            components.path += "/stream"
+        }
+        components.queryItems = [URLQueryItem(name: "output_format", value: outputFormat.rawValue)]
+        return components.url!
+    }
+
     /// Transcribes recorded speech to text.
     ///
     /// - Parameters:

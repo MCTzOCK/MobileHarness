@@ -182,7 +182,9 @@ public actor Agent {
             let response = try await client.complete(
                 model: configuration.model,
                 messages: effectiveMessages(),
-                tools: toolDefinitions(),
+                tools: toolDefinitions() + configuration.openRouterServerTools.map {
+                    .builtin($0.type, parameters: $0.parameters)
+                },
                 temperature: configuration.temperature,
                 maxTokens: configuration.maxTokens
             )
